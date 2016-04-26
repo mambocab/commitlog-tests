@@ -5,7 +5,7 @@ USAGE: {__file__} generate [--output-file OUTPUT] --keyspace-name KS_NAME --tabl
        {__file__} validate DATAFILE --keyspace-name KS_NAME --table-name TABLE_NAME
 
 OPTIONS:
-    --output-file OUTPUT -o OUTPUT  Optional output file. stderr by default.
+    --output-file OUTPUT -o OUTPUT  Optional output file. stdout by default.
 """
 from __future__ import print_function
 
@@ -28,7 +28,7 @@ def generate(output_file, ks_name, table_name):
     session = Cluster().connect()
 
     def echo_and_exec(stmt):
-        print(stmt, file=sys.stderr)
+        print('executing {stmt}'.format(stmt=stmt), file=sys.stderr)
         session.execute(stmt)
 
     echo_and_exec(
@@ -42,24 +42,28 @@ def generate(output_file, ks_name, table_name):
         "PRIMARY KEY ({pk_from_header}));".format(
             ks=ks_name,
             tab=table_name,
-            ints_from_header=' int,'.join(header) + ' int, ',
+            ints_from_header=' int, '.join(header) + ' int, ',
             pk_from_header=', '.join(header)
         )
     )
 
     builder = StringIO()
     writer = csv.writer(builder)
-    # write header
-    writer.writerow(header)
 
+    writer.writerow(header)
     data = [
         [randint(-1000, 1000) for _ in header]
         for _ in range(50000)
     ]
+    print('Writing {n} rows to {f}'.format(n=len(data), f=output_file), file=sys.stderr)
 
     for row in data:
         writer.writerow(row)
-    print(builder.getvalue(), file=output_file)
+    try:
+        print(builder.getvalue(), file=output_file)
+    except AttributeError:
+        with open(output_file, 'w') as f:
+            print(builder.getvalue(), file=f)
 
 
 def load(datafile, ks_name, table_name):
@@ -73,22 +77,15 @@ def load(datafile, ks_name, table_name):
             "INSERT INTO {ks}.{tab} ({header_spec}) VALUES ({qs});"
         ).format(ks=ks_name,
                  tab=table_name,
-                 header_spec=','.join(header),
-                 qs=','.join(['?' for _ in header]))
-        # print('preparing {stmt}'.format(stmt=stmt), file=sys.stderr)
+                 header_spec=', '.join(header),
+                 qs=', '.join(['?' for _ in header]))
+        print('preparing "{stmt}"'.format(stmt=stmt), file=sys.stderr)
         prepared = session.prepare(stmt)
-        data = csv_handle_to_nested_list(reader)
-        # print(data, file=sys.stderr)
 
+        data = csv_handle_to_nested_list(reader)
+        print('About to load {n} rows'.format(n=len(data)))
         for row in data:
             session.execute(prepared, row)
-
-        # execute_concurrent_with_args(
-        #     session=session,
-        #     statement=prepared,
-        #     parameters=data,
-        #     concurrency=2
-        # )
 
 
 def validate(datafile, ks_name, table_name):
@@ -105,18 +102,23 @@ def validate(datafile, ks_name, table_name):
             session.execute('SELECT * FROM {ks}.{tab};'.format(ks=ks_name, tab=table_name))
         ]
 
-        # print("here's what we got from the csv:\n{from_csv}".format(from_csv=from_csv))
-        # print("here's what we got from cassandra:\n{from_cassandra}".format(from_cassandra=from_cassandra))
-        assert sorted(from_csv) == sorted(from_cassandra), (
-            'uh-oh!\n'
-            '{from_csv}\n'
-            '{from_cassandra}\n'
-        ).format(from_csv=from_csv, from_cassandra=from_cassandra)
+        try:
+            assert sorted(from_csv) == sorted(from_cassandra), (
+                'uh-oh!\n'
+                '{from_csv}\n'
+                '{from_cassandra}\n'
+            ).format(from_csv=len(from_csv), from_cassandra=len(from_cassandra))
+        except AssertionError:
+            bad_contents = 'bad_contents.csv'
+            print('Printing values from Cassandra to {f}'.format(bad_contents=f))
+            with open(bad_contents, 'w') as csvfile:
+                for row in from_cassandra:
+                    csvfile.write(row)
 
 
 if __name__ == '__main__':
     opts = docopt(__doc__.format(__file__=__file__))
-    print(opts, file=sys.stderr)
+    # print(opts, file=sys.stderr)
     ks_name, table_name = opts['KS_NAME'], opts['TABLE_NAME']
     datafile = opts['DATAFILE']
     output_file = opts['--output-file'] or sys.stdout

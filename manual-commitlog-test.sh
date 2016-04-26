@@ -47,7 +47,7 @@ fi
 
 # Now we start our cluster, create our schema, and generate a csv of our data...
 ccm start --wait-for-binary-proto
-./data_util.py generate --keyspace-name ks --table-name tab >data.csv
+./data_util.py generate -o data.csv --keyspace-name ks --table-name tab
 
 # and write some dataaaaaa.
 ./data_util.py load data.csv --keyspace-name ks --table-name tab
