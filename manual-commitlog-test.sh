@@ -45,13 +45,12 @@ if [ ! -z $COMMITLOG_TOTAL_SPACE ] ; then
   ccm node1 updateconf -y "commitlog_total_space_in_mb: $COMMITLOG_TOTAL_SPACE"
 fi
 
-# Now we start our cluster and create our schema...
+# Now we start our cluster, create our schema, and generate a csv of our data...
 ccm start --wait-for-binary-proto
-ccm node1 cqlsh -x "CREATE KEYSPACE $KS_NAME WITH replication = {'class': 'SimpleStrategy' , 'replication_factor': 1 };"
-ccm node1 cqlsh -x "CREATE TABLE $KS_NAME.$TABLE_NAME (foo int PRIMARY KEY);"
+./data_util.py generate --keyspace-name ks --table-name tab >data.csv
 
 # and write some dataaaaaa.
-ccm node1 cqlsh -x "INSERT INTO $KS_NAME.$TABLE_NAME (foo) VALUES (4);"
+./data_util.py load data.csv --keyspace-name ks --table-name tab
 
 # Having written the data, we'll wait until the commitlog syncs to disk.
 echo Sleeping until commitlog sync
@@ -80,8 +79,9 @@ fi
 
 # Now that we've shut down C* and confirmed that we didn't persist data to
 # SSTables, we can restart.
+echo Restarting Cassandra...
 ccm start --wait-for-binary-proto
 
 # and then confirm that the data we wrote is still there.
-ccm node1 cqlsh -e "SELECT * FROM ks.tab;"
-# ccm node1 cqlsh
+echo Validating data
+./data_util.py validate data.csv  --keyspace-name ks --table-name tab
