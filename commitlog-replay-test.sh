@@ -1,10 +1,5 @@
 #!/usr/bin/env sh
-# This is a manual test of commitlog correctness. The goal here is to demonstrate that, under the tested configuration, the commitlog works correctly -- in particular, that all the data we wrote is still in there.
-
-# Here, we make multiple runs easier to find visually.
-py "random.choice(['uh huh its TEST TIME',
-                   'who is testing. omg no way',
-                   'lollllll'])" | figlet -ct -f slant
+# This is a scripted test of commitlog correctness. The goal here is to demonstrate that, under the tested configuration, the commitlog works correctly -- in particular, that all the data we wrote is still in there.
 
 # In general, that means:
 #
@@ -12,9 +7,15 @@ py "random.choice(['uh huh its TEST TIME',
 # 2. shut down Cassandra, then bring it back up to force commitlog replay
 # 3. make sure that the data we wrote is still in there.
 
+# Here, we make multiple runs easier to find visually.
+py "random.choice(['uh huh its TEST TIME',
+                   'who is testing. omg no way',
+                   'lollllll'])" | figlet -ct -f slant
+
+
 # These are going to be set the same for all our test runs.
 set -e
-CLUSTER_NAME=manual-commitlog-test
+CLUSTER_NAME=commitlog-replay-test
 KS_NAME=ks
 TABLE_NAME=tab
 
