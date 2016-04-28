@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 """
-USAGE: {__file__} generate [--output-file OUTPUT] --keyspace-name KS_NAME --table-name TABLE_NAME
+USAGE: {__file__} generate [--output-file OUTPUT] [-n ROWS_TO_LOAD] --keyspace-name KS_NAME --table-name TABLE_NAME
        {__file__} load DATAFILE --keyspace-name KS_NAME --table-name TABLE_NAME
        {__file__} validate DATAFILE --keyspace-name KS_NAME --table-name TABLE_NAME
 
 OPTIONS:
     --output-file OUTPUT -o OUTPUT  Optional output file. stdout by default.
+    -n ROWS_TO_LOAD                 Number of rows to load
 """
 from __future__ import print_function
 
@@ -24,7 +25,9 @@ def csv_handle_to_nested_list(fh):
             list(list(map(int, row)) for row in fh)
             if x]
 
-def generate(output_file, ks_name, table_name):
+def generate(output_file, ks_name, table_name, rows=None):
+    rows = rows or 50000
+
     session = Cluster().connect()
 
     def echo_and_exec(stmt):
@@ -53,7 +56,7 @@ def generate(output_file, ks_name, table_name):
     writer.writerow(header)
     data = [
         [randint(-1000, 1000) for _ in header]
-        for _ in range(50000)
+        for _ in range(rows)
     ]
     print('Writing {n} rows to {f}'.format(n=len(data), f=output_file), file=sys.stderr)
 
@@ -110,10 +113,12 @@ def validate(datafile, ks_name, table_name):
             ).format(from_csv=len(from_csv), from_cassandra=len(from_cassandra))
         except AssertionError:
             bad_contents = 'bad_contents.csv'
-            print('Printing values from Cassandra to {f}'.format(bad_contents=f))
+            print('Nope, values not validated.')
+            print('Printing values from Cassandra to {f}'.format(f=bad_contents))
             with open(bad_contents, 'w') as csvfile:
                 for row in from_cassandra:
                     csvfile.write(row)
+            print('Exiting.')
 
 
 if __name__ == '__main__':
@@ -123,8 +128,15 @@ if __name__ == '__main__':
     datafile = opts['DATAFILE']
     output_file = opts['--output-file'] or sys.stdout
     if opts['generate']:
-        generate(output_file=output_file, ks_name=ks_name, table_name=table_name)
+        generate(
+            output_file=output_file,
+            ks_name=ks_name,
+            table_name=table_name,
+            rows=int(opts['-n'])
+        )
     elif opts['load']:
         load(datafile=datafile, ks_name=ks_name, table_name=table_name)
     elif opts['validate']:
         validate(datafile=datafile, ks_name=ks_name, table_name=table_name)
+    else:
+        raise RuntimeError("This shouldn't happen :/")
