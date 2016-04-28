@@ -2,7 +2,8 @@
 """
 USAGE: {__file__} generate [--output-file OUTPUT] [-n ROWS_TO_LOAD] --keyspace-name KS_NAME --table-name TABLE_NAME
        {__file__} load DATAFILE --keyspace-name KS_NAME --table-name TABLE_NAME
-       {__file__} validate DATAFILE --keyspace-name KS_NAME --table-name TABLE_NAME
+       {__file__} validate_same DATAFILE --keyspace-name KS_NAME --table-name TABLE_NAME
+       {__file__} validate_empty --keyspace-name KS_NAME --table-name TABLE_NAME
 
 OPTIONS:
     --output-file OUTPUT -o OUTPUT  Optional output file. stdout by default.
@@ -91,34 +92,44 @@ def load(datafile, ks_name, table_name):
             session.execute(prepared, row)
 
 
-def validate(datafile, ks_name, table_name):
+def data_from_csv(datafile):
     with open(datafile) as f:
         reader = csv.reader(f)
-        session = Cluster().connect()
+        reader.next()  # consume the header
 
-        # consume the header
-        reader.next()
+        return csv_handle_to_nested_list(reader)
 
-        from_csv = csv_handle_to_nested_list(reader)
-        from_cassandra = [
-            list(row) for row in
-            session.execute('SELECT * FROM {ks}.{tab};'.format(ks=ks_name, tab=table_name))
-        ]
 
-        try:
-            assert sorted(from_csv) == sorted(from_cassandra), (
-                'uh-oh!\n'
-                '{from_csv}\n'
-                '{from_cassandra}\n'
-            ).format(from_csv=len(from_csv), from_cassandra=len(from_cassandra))
-        except AssertionError:
-            bad_contents = 'bad_contents.csv'
-            print('Nope, values not validated.')
-            print('Printing values from Cassandra to {f}'.format(f=bad_contents))
-            with open(bad_contents, 'w') as csvfile:
-                for row in from_cassandra:
-                    csvfile.write(row)
-            print('Exiting.')
+def data_from_cassandra(ks_name, table_name):
+    session = Cluster().connect()
+    return [
+        list(row) for row in
+        session.execute('SELECT * FROM {ks}.{tab};'.format(ks=ks_name, tab=table_name))
+    ]
+
+
+def validate_empty(ks_name, table_name):
+    assert data_from_cassandra(ks_name, table_name) == []
+    print('Congrats, {ks_name}.{table_name} is empty'.format(ks_name=ks_name, table_name=table_name))
+
+
+def validate_same(datafile, ks_name, table_name):
+    from_csv = data_from_csv(datafile)
+    from_cassandra = data_from_cassandra(ks_name, table_name)
+    try:
+        assert sorted(from_csv) == sorted(from_cassandra), (
+            'uh-oh!\n'
+            '{from_csv}\n'
+            '{from_cassandra}\n'
+        ).format(from_csv=len(from_csv), from_cassandra=len(from_cassandra))
+    except AssertionError:
+        bad_contents = 'bad_contents.csv'
+        print('Nope, values not validated.')
+        print('Printing values from Cassandra to {f}'.format(f=bad_contents))
+        with open(bad_contents, 'w') as csvfile:
+            for row in from_cassandra:
+                csvfile.write(row)
+        print('Exiting.')
 
 
 if __name__ == '__main__':
@@ -127,16 +138,23 @@ if __name__ == '__main__':
     ks_name, table_name = opts['KS_NAME'], opts['TABLE_NAME']
     datafile = opts['DATAFILE']
     output_file = opts['--output-file'] or sys.stdout
+    try:
+        rows = int(opts['-n'])
+    except TypeError:
+        rows = opts['-n']
+
     if opts['generate']:
         generate(
             output_file=output_file,
             ks_name=ks_name,
             table_name=table_name,
-            rows=int(opts['-n'])
+            rows=rows
         )
     elif opts['load']:
         load(datafile=datafile, ks_name=ks_name, table_name=table_name)
-    elif opts['validate']:
-        validate(datafile=datafile, ks_name=ks_name, table_name=table_name)
+    elif opts['validate_same']:
+        validate_same(datafile=datafile, ks_name=ks_name, table_name=table_name)
+    elif opts['validate_empty']:
+        validate_empty(ks_name=ks_name, table_name=table_name)
     else:
         raise RuntimeError("This shouldn't happen :/")

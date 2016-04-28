@@ -55,7 +55,7 @@ fi
 
 # Now we start our cluster, create our schema, and generate a csv of our data...
 ccm start --wait-for-binary-proto
-./data_util.py generate -o data.csv --keyspace-name ks --table-name tab -n 10
+./data_util.py generate -o data.csv --keyspace-name ks --table-name tab -n 1000000
 
 # and write some dataaaaaa.
 ./data_util.py load data.csv --keyspace-name ks --table-name tab
@@ -73,11 +73,11 @@ fi
 
 # Now, we archive the commitlog:
 echo Taking snapshot
-ccm node1 nodetool "snapshot $KS_NAME --skip-flush -t $SNAPSHOT_NAME"
+ccm node1 nodetool "snapshot $KS_NAME -t $SNAPSHOT_NAME"
 
 # Here, we check that we didn't generate any sstables. If we did, then we need
 # to do more to make sure that commitlog flush doesn't happen.
-check_for_sstables
+# check_for_sstables
 
 # Then we'll shut down C*, and we're not gonna be nice about it.
 ccm stop --not-gently
@@ -86,4 +86,17 @@ rm ~/.ccm/$CLUSTER_NAME/node1/commitlogs/*
 
 ccm start --wait-for-binary-proto
 
-./data_util.py validate data.csv  --keyspace-name ks --table-name tab
+# ./data_util.py validate_empty --keyspace-name ks --table-name tab
+
+ccm stop --not-gently
+
+for f in `find ~/.ccm/$CLUSTER_NAME/node1/data*/ks/tab-*/snapshots/$SNAPSHOT_NAME -type f` ; do
+  echo Copying $f
+  cp $f -r ~/.ccm/$CLUSTER_NAME/node1/data`basename $SNAPSHOT_NAME`
+done
+
+ccm start --wait-for-binary-proto
+
+# Checking that the same data is still there.
+./data_util.py validate_same data.csv --keyspace-name ks --table-name tab
+echo Congrats! Made it all the way to the end.

@@ -85,4 +85,4 @@ ccm start --wait-for-binary-proto
 
 # and then confirm that the data we wrote is still there.
 echo Validating data
-./data_util.py validate data.csv  --keyspace-name ks --table-name tab
+./data_util.py validate_same data.csv  --keyspace-name ks --table-name tab
